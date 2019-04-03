@@ -5,7 +5,8 @@
   "main": "build/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "publish": "npm run build && npm publish"
   },
   "repository": {
     "type": "git",
