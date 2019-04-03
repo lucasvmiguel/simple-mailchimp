@@ -1,0 +1,29 @@
+{
+  "name": "simple-mailchimp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "build/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc -p tsconfig.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lucasvmiguel/simple-mailchimp.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/lucasvmiguel/simple-mailchimp/issues"
+  },
+  "homepage": "https://github.com/lucasvmiguel/simple-mailchimp#readme",
+  "dependencies": {
+    "axios": "^0.18.0",
+    "lodash": "^4.17.11"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.123",
+    "@types/node": "^11.13.0",
+    "typescript": "^3.4.1"
+  }
+}
