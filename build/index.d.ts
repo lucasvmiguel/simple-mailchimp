@@ -1,6 +1,3 @@
-interface IUserDetailed extends IUser {
-    id: string;
-}
 interface IUserExtra {
     [key: string]: string | number;
 }
@@ -30,9 +27,10 @@ export declare class Client {
     private listId;
     private logging;
     constructor(params: IClient);
+    private _maybeLog;
     private _requestHttp;
     private _getUser;
-    getUser: (userEmail: string) => Promise<IUserDetailed>;
+    getUser: (userEmail: string) => Promise<IUser>;
     addOrGetUser: (user: IUser) => Promise<IUser>;
     editUserTags: (userEmail: string, tags: string[]) => Promise<IUser>;
     editUserExtra: (userEmail: string, userExtra: IUserExtra) => Promise<IUser>;

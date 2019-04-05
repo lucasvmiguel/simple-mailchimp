@@ -5,8 +5,15 @@
     "target": "es2016",
     "module": "commonjs",
     "moduleResolution": "node",
-    "lib": ["es2016"],
+    "lib": [
+      "es2016"
+    ],
     "declaration": true
   },
-  "include": ["./src/**/*"]
+  "include": [
+    "./src/**/*.ts"
+  ],
+  "exclude": [
+    "./src/**/*.spec.ts"
+  ]
 }

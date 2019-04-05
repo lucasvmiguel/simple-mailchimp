@@ -39,20 +39,24 @@ export class Client {
   private logging: boolean;
 
   constructor(params: IClient) {
-    this.authToken = Buffer.from(
-      `${params.username}:${params.apiKey}`
-    ).toString("base64");
+    this.authToken = Buffer.from(`${params.username}:${params.apiKey}`).toString("base64");
     this.url = params.url;
     this.listId = params.listId;
     this.logging = !!params.logging;
   }
+
+  private _maybeLog = (functionName: string, response: any) => {
+    if (this.logging) {
+      console.log(`MAILCHIMP RESPONSE ${functionName}: ${JSON.stringify(response.data)}\n`);
+    }
+  };
 
   private _requestHttp = async (
     url: string,
     method: "get" | "post" | "put",
     data?: object
   ) => {
-    return axios({
+    const response = await axios({
       method,
       data,
       url: `${this.url}${url}`,
@@ -61,33 +65,22 @@ export class Client {
         authorization: `Basic ${this.authToken}`
       }
     });
+
+    this._maybeLog(url, response);
+
+    return response
   };
 
-  private _getUser = async (
-    userEmail: string
-  ): Promise<IUserDetailed | null> => {
-    const response = await this._requestHttp(
-      `/search-members?list_id=${this.listId}&query=${userEmail}`,
-      "get"
-    );
+  private _getUser = async (userEmail: string): Promise<IUserDetailed | null> => {
+    const response = await this._requestHttp(`/search-members?list_id=${this.listId}&query=${userEmail}`, "get");
 
-    if (this.logging) {
-      const data = response && response.data;
-      console.log(`MAILCHIMP RESPONSE _getUser: ${JSON.stringify(data)}\n`);
-    }
+    const members = _.get(response, ['data', 'exact_matches', 'members']);
 
-    if (
-      response.status === 200 &&
-      response.data &&
-      response.data.exact_matches &&
-      Array.isArray(response.data.exact_matches.members) &&
-      response.data.exact_matches.members.length > 0
-    ) {
+    if (response.status === 200 && _.size(members) > 0) {
       const user = response.data.exact_matches.members[0];
-      const tags = Array.isArray(user.tags)
-        ? _.map(user.tags, t => t.name)
-        : [];
-      const extra = { ...user.merge_fields, FNAME: undefined };
+      const tags = Array.isArray(user.tags) ? _.map(user.tags, t => t.name) : [];
+      const extra = { ...user.merge_fields };
+      delete extra.FNAME;
 
       return Promise.resolve({
         id: user.id,
@@ -101,139 +94,106 @@ export class Client {
     return Promise.resolve(null);
   };
 
-  public getUser = async (userEmail: string): Promise<IUserDetailed | null> => {
+  public getUser = async (userEmail: string): Promise<IUser | null> => {
     const user = await this._getUser(userEmail);
 
     if (!user) {
       return Promise.resolve(null);
     }
 
-    return Promise.resolve(user);
+    const userCloned = _.clone(user);
+    delete userCloned.id;
+    return Promise.resolve(userCloned);
   };
 
   public addOrGetUser = async (user: IUser): Promise<IUser | null> => {
     const userAlreadyCreated = await this._getUser(user.email);
+
     if (userAlreadyCreated) {
-      return Promise.resolve(userAlreadyCreated);
+      const userCloned = _.clone(userAlreadyCreated);
+      delete userCloned.id;
+      return Promise.resolve(userCloned);
     }
 
     const userTags = Array.isArray(user.tags) ? user.tags : [];
     const userExtra = user.extra ? user.extra : {};
 
-    const response = await this._requestHttp(
-      `/lists/${this.listId}/members`,
-      "post",
-      {
-        email_address: user.email,
-        status: "subscribed",
-        tags: userTags,
-        merge_fields: {
-          ...userExtra,
-          FNAME: user.name
-        }
+    const response = await this._requestHttp(`/lists/${this.listId}/members`, "post", {
+      email_address: user.email,
+      status: "subscribed",
+      tags: userTags,
+      merge_fields: {
+        ...userExtra,
+        FNAME: user.name
       }
-    );
+    });
 
-    if (this.logging) {
-      const data = response && response.data;
-      console.log(`MAILCHIMP RESPONSE addOrGetUser: ${JSON.stringify(data)}\n`);
+    if (response.status !== 200) {
+      return Promise.reject(null);
     }
 
-    if (response.status === 200) {
-      return Promise.resolve({
-        email: response.data.email_address,
-        name: response.data.merge_fields.FNAME,
-        tags: userTags,
-        extra: {
-          ...response.data.merge_fields,
-          FNAME: undefined
-        }
-      });
+    const userResponse = {
+      email: response.data.email_address,
+      name: response.data.merge_fields.FNAME,
+      tags: userTags,
+      extra: response.data.merge_fields,
     }
+    delete userResponse.extra.FNAME;
 
-    return Promise.reject(null);
+    return Promise.resolve(userResponse);
   };
 
-  public editUserTags = async (
-    userEmail: string,
-    tags: string[]
-  ): Promise<IUser | null> => {
+  public editUserTags = async (userEmail: string, tags: string[]): Promise<IUser | null> => {
     const userAlreadyCreated = await this._getUser(userEmail);
     if (!userAlreadyCreated) {
       return Promise.resolve(null);
     }
 
-    const userTags = Array.isArray(userAlreadyCreated.tags)
-      ? _.concat(userAlreadyCreated.tags, tags)
-      : tags;
+    const userTags = Array.isArray(userAlreadyCreated.tags) ? _.concat(userAlreadyCreated.tags, tags) : tags;
     const userTagsValidated = _.chain(userTags)
       .uniq()
-      .map(t =>
-        _.includes(tags, t)
-          ? { name: t, status: "active" }
-          : { name: t, status: "inactive" }
-      )
+      .map(t => _.includes(tags, t) ? { name: t, status: "active" } : { name: t, status: "inactive" })
       .value();
 
-    const response = await this._requestHttp(
-      `/lists/${this.listId}/members/${userAlreadyCreated.id}/tags`,
-      "post",
-      {
-        tags: userTagsValidated
-      }
-    );
+    const response = await this._requestHttp(`/lists/${this.listId}/members/${userAlreadyCreated.id}/tags`, "post", {
+      tags: userTagsValidated
+    });
 
-    if (this.logging) {
-      const data = response && response.data;
-      console.log(`MAILCHIMP RESPONSE editUserTags: ${JSON.stringify(data)}\n`);
+    if (response.status !== 204) {
+      return Promise.reject(null);
     }
 
-    if (response.status === 204) {
-      return Promise.resolve({
-        name: userAlreadyCreated.name,
-        email: userAlreadyCreated.email,
-        tags: _.map(userTagsValidated, t => t.name),
-        extra: userAlreadyCreated.extra
-      });
-    }
-
-    return Promise.reject(null);
+    return Promise.resolve({
+      name: userAlreadyCreated.name,
+      email: userAlreadyCreated.email,
+      tags: _.map(userTagsValidated, t => t.name),
+      extra: userAlreadyCreated.extra
+    });
   };
 
-  public editUserExtra = async (
-    userEmail: string,
-    userExtra: IUserExtra
-  ): Promise<IUser | null> => {
+  public editUserExtra = async (userEmail: string, userExtra: IUserExtra): Promise<IUser | null> => {
     const userAlreadyCreated = await this._getUser(userEmail);
     if (!userAlreadyCreated) {
       return Promise.resolve(null);
     }
 
-    const extra = { ...userExtra, FNAME: userAlreadyCreated.name };
-    const response = await this._requestHttp(
-      `/lists/${this.listId}/members/${userAlreadyCreated.id}`,
-      "put",
-      {
-        merge_fields: extra
-      }
-    );
+    const extra = { ...userAlreadyCreated.extra, ...userExtra, FNAME: userAlreadyCreated.name };
+    const response = await this._requestHttp(`/lists/${this.listId}/members/${userAlreadyCreated.id}`, "put", {
+      merge_fields: extra
+    });
 
-    if (this.logging) {
-      const data = response && response.data;
-      console.log(
-        `MAILCHIMP RESPONSE editUserExtra: ${JSON.stringify(data)}\n`
-      );
+    if (response.status !== 200) {
+      return Promise.reject(null);
     }
 
-    if (response.status === 200) {
-      return Promise.resolve({
-        name: userAlreadyCreated.name,
-        email: userAlreadyCreated.email,
-        tags: userAlreadyCreated.tags,
-        extra
-      });
-    }
+    const userResponse = {
+      name: userAlreadyCreated.name,
+      email: userAlreadyCreated.email,
+      tags: userAlreadyCreated.tags,
+      extra
+    };
+    delete userResponse.extra.FNAME;
 
-    return Promise.reject(null);
+    return Promise.resolve(userResponse);
   };
 }
