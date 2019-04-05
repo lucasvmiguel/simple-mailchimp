@@ -51,11 +51,7 @@ export class Client {
     }
   };
 
-  private _requestHttp = async (
-    url: string,
-    method: "get" | "post" | "put",
-    data?: object
-  ) => {
+  private _requestHttp = async (url: string, method: "get" | "post" | "put", data?: object) => {
     const response = await axios({
       method,
       data,
